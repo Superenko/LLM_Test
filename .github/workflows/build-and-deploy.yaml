@@ -1,0 +1,86 @@
+name: Build and Deploy the Gatsby app
+run-name: ${{ inputs.siteName }} [${{ inputs.run_id || github.run_id }}]
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Custom job identifier, e.g. "1"'
+        type: string
+        required: false
+      siteName:
+        description: 'CF site name, e.g. "dainty-staging"'
+        type: string
+        required: true
+      modelName:
+        description: 'Model name as per Airtable, e.g. "dainty-staging"'
+        type: string
+        required: true
+      airtableBaseId:
+        description: 'Airtable base ID'
+        type: string
+        required: true
+      airtableKey:
+        description: 'Airtable key'
+        type: string
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Build the app and publish it to Cloudflare Pages
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Clean yarn and npm caches
+        run: |
+          yarn cache clean --all
+          npm cache clean --force
+
+      - uses: actions/cache@v4
+        name: Cache Yarn
+        with:
+          path: .yarn
+          key: yarn-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+
+      - uses: actions/cache@v4
+        name: Cache Node modules
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Build Gatsby app
+        run: yarn build
+        env:
+          NODE_ENV: production
+          AIRTABLE_KEY: ${{ inputs.airtableKey }}
+          AIRTABLE_BASE_ID: ${{ inputs.airtableBaseId }}
+          AIRTABLE_TABLE_NAME_INDEX: ${{ vars.AIRTABLE_TABLE_NAME_INDEX }}
+          SINGLE_SITE: ${{ inputs.modelName }}
+          GATSBY_DO_SPACES_CDN: ${{ vars.GATSBY_DO_SPACES_CDN }}
+          DO_SPACES_ENDPOINT: ${{ vars.DO_SPACES_ENDPOINT }}
+          DO_SPACES_REGION: ${{ vars.DO_SPACES_REGION }}
+          DO_SPACES_KEY: ${{ secrets.DO_SPACES_KEY }}
+          DO_SPACES_SECRET: ${{ secrets.DO_SPACES_SECRET }}
+          DO_SPACES_NAME: ${{ vars.DO_SPACES_NAME }}
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ vars.CF_ACCOUNT_ID }}
+          projectName: ${{ inputs.siteName }}
+          directory: ./public
+          branch: main
