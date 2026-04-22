@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from . import models, schemas, crud
+import models, schemas, crud
 from .database import SessionLocal, engine, Base
 import os
 from typing import List
