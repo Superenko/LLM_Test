@@ -1,86 +1,110 @@
-name: Build and Deploy the Gatsby app
-run-name: ${{ inputs.siteName }} [${{ inputs.run_id || github.run_id }}]
+name: LLM Error Test Pipeline
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
-      run_id:
-        description: 'Custom job identifier, e.g. "1"'
-        type: string
+      error_type:
+        description: 'Оберіть тип помилки для тестування LLM Дашборду (або none для успіху)'
+        required: true
+        type: choice
+        default: none
+        options:
+          - none
+          - syntax_error
+          - test_failed
+          - database_timeout
+          - missing_dependency
+      modelName:
+        description: 'Dummy model name'
         required: false
       siteName:
-        description: 'CF site name, e.g. "dainty-staging"'
-        type: string
-        required: true
-      modelName:
-        description: 'Model name as per Airtable, e.g. "dainty-staging"'
-        type: string
-        required: true
+        description: 'Dummy site name'
+        required: false
       airtableBaseId:
-        description: 'Airtable base ID'
-        type: string
-        required: true
+        description: 'Dummy base'
+        required: false
       airtableKey:
-        description: 'Airtable key'
-        type: string
-        required: true
+        description: 'Dummy key'
+        required: false
+      run_id:
+        description: 'Dummy run id'
+        required: false
 
 jobs:
-  deploy:
+  simulate-ci-cd:
     runs-on: ubuntu-latest
-    name: Build the app and publish it to Cloudflare Pages
+    name: Симуляція CI/CD (${{ github.event.inputs.error_type || 'auto' }})
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: yarn
-          cache-dependency-path: yarn.lock
 
-      - name: Clean yarn and npm caches
+      - name: Install Dependencies
         run: |
-          yarn cache clean --all
-          npm cache clean --force
+          echo "Встановлення залежностей..."
+          if [ "${{ github.event.inputs.error_type }}" = "missing_dependency" ]; then
+            echo "npm err! code E404"
+            echo "npm err! 404 Not Found - GET https://registry.npmjs.org/non-existent-package-for-llm-test - Not found"
+            echo "npm err! 404"
+            echo "npm err! 404  'non-existent-package-for-llm-test@*' is not in this registry."
+            echo "npm err! 404 You should bug your node_modules directory owner to fix that."
+            exit 1
+          fi
+          echo "Усі залежності успішно встановлено."
 
-      - uses: actions/cache@v4
-        name: Cache Yarn
-        with:
-          path: .yarn
-          key: yarn-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+      - name: Run Linter
+        run: |
+          echo "Запуск лінтера..."
+          if [ "${{ github.event.inputs.error_type }}" = "syntax_error" ]; then
+            echo "Error: src/main.ts:15:23 - error TS1005: ',' expected."
+            echo ""
+            echo "15 const user = { name: 'Test' age: 25 };"
+            echo "                             ~~~"
+            echo "Found 1 error."
+            exit 1
+          fi
+          echo "Синтаксис перевірено - помилок немає."
 
-      - uses: actions/cache@v4
-        name: Cache Node modules
-        with:
-          path: node_modules
-          key: modules-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+      - name: Run Unit Tests
+        run: |
+          echo "Виконання тестів..."
+          if [ "${{ github.event.inputs.error_type }}" = "test_failed" ]; then
+            echo "FAIL  src/math.test.ts"
+            echo "  ✕ should add two numbers correctly (5 ms)"
+            echo "  ● math functions › should add two numbers correctly"
+            echo ""
+            echo "    expect(received).toBe(expected) // Object.is equality"
+            echo ""
+            echo "    Expected: 4"
+            echo "    Received: 5"
+            echo ""
+            echo "      12 | test('should add two numbers correctly', () => {"
+            echo "    > 13 |   expect(add(2, 2)).toBe(4);"
+            echo "         |                     ^"
+            exit 1
+          fi
+          echo "Усі тести пройдено успішно!"
 
-      - name: Install dependencies
-        run: yarn install
+      - name: Apply Database Migrations
+        run: |
+          echo "Накочування міграцій БД..."
+          if [ "${{ github.event.inputs.error_type }}" = "database_timeout" ]; then
+            echo "Error: Connection timeout. Could not connect to PostgreSQL on database.internal:5432"
+            echo "Hint: verify that your database is running and accept connections."
+            echo "PrismaClientInitializationError: Can't reach database server at database.internal"
+            exit 1
+          fi
+          echo "Міграції БД успішно застосовані!"
 
-      - name: Build Gatsby app
-        run: yarn build
-        env:
-          NODE_ENV: production
-          AIRTABLE_KEY: ${{ inputs.airtableKey }}
-          AIRTABLE_BASE_ID: ${{ inputs.airtableBaseId }}
-          AIRTABLE_TABLE_NAME_INDEX: ${{ vars.AIRTABLE_TABLE_NAME_INDEX }}
-          SINGLE_SITE: ${{ inputs.modelName }}
-          GATSBY_DO_SPACES_CDN: ${{ vars.GATSBY_DO_SPACES_CDN }}
-          DO_SPACES_ENDPOINT: ${{ vars.DO_SPACES_ENDPOINT }}
-          DO_SPACES_REGION: ${{ vars.DO_SPACES_REGION }}
-          DO_SPACES_KEY: ${{ secrets.DO_SPACES_KEY }}
-          DO_SPACES_SECRET: ${{ secrets.DO_SPACES_SECRET }}
-          DO_SPACES_NAME: ${{ vars.DO_SPACES_NAME }}
-
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
-          accountId: ${{ vars.CF_ACCOUNT_ID }}
-          projectName: ${{ inputs.siteName }}
-          directory: ./public
-          branch: main
+      - name: Build & Deploy
+        run: |
+          echo "Збірка пройшла успішно!"
+          echo "Деплой на сервери завершено."
