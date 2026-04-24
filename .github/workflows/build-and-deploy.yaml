@@ -39,6 +39,9 @@ jobs:
     name: Симуляція CI/CD (${{ github.event.inputs.error_type || 'auto' }})
 
     steps:
+      - name: Force Fail
+        run: exit 1
+
       - name: Checkout Code
         uses: actions/checkout@v4
 
