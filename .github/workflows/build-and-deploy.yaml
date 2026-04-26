@@ -1,113 +1,106 @@
-name: LLM Error Test Pipeline
+name: CI/CD Production Pipeline
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
     inputs:
-      error_type:
-        description: 'Оберіть тип помилки для тестування LLM Дашборду (або none для успіху)'
-        required: true
-        type: choice
-        default: none
-        options:
-          - none
-          - syntax_error
-          - test_failed
-          - database_timeout
-          - missing_dependency
-      modelName:
-        description: 'Dummy model name'
+      log_level:
+        description: 'Log level'
         required: false
-      siteName:
-        description: 'Dummy site name'
-        required: false
-      airtableBaseId:
-        description: 'Dummy base'
-        required: false
-      airtableKey:
-        description: 'Dummy key'
-        required: false
-      run_id:
-        description: 'Dummy run id'
-        required: false
+        default: 'info'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/library-service
 
 jobs:
-  simulate-ci-cd:
+  lint:
     runs-on: ubuntu-latest
-    name: Симуляція CI/CD (${{ github.event.inputs.error_type || 'auto' }})
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        service: [api_gateway, book_service, user_service, reading_service]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Linting Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort
+
+      - name: Lint with flake8
+        run: |
+          # stop the build if there are Python syntax errors or undefined names
+          flake8 Library/${{ matrix.service }} --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings.
+          flake8 Library/${{ matrix.service }} --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+  build-and-push:
+    needs: lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [api_gateway, book_service, user_service, reading_service, frontend]
 
     steps:
-      - name: Force Fail
-        run: exit 1
-
-      - name: Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
         with:
-          node-version: 20
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Dependencies
-        run: |
-          echo "Встановлення залежностей..."
-          if [ "${{ github.event.inputs.error_type }}" = "missing_dependency" ]; then
-            echo "npm err! code E404"
-            echo "npm err! 404 Not Found - GET https://registry.npmjs.org/non-existent-package-for-llm-test - Not found"
-            echo "npm err! 404"
-            echo "npm err! 404  'non-existent-package-for-llm-test@*' is not in this registry."
-            echo "npm err! 404 You should bug your node_modules directory owner to fix that."
-            exit 1
-          fi
-          echo "Усі залежності успішно встановлено."
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=sha,format=short
+            latest
 
-      - name: Run Linter
-        run: |
-          echo "Запуск лінтера..."
-          if [ "${{ github.event.inputs.error_type }}" = "syntax_error" ]; then
-            echo "Error: src/main.ts:15:23 - error TS1005: ',' expected."
-            echo ""
-            echo "15 const user = { name: 'Test' age: 25 };"
-            echo "                             ~~~"
-            echo "Found 1 error."
-            exit 1
-          fi
-          echo "Синтаксис перевірено - помилок немає."
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Library/${{ matrix.service }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Run Unit Tests
+  deploy-staging:
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Staging
         run: |
-          echo "Виконання тестів..."
-          if [ "${{ github.event.inputs.error_type }}" = "test_failed" ]; then
-            echo "FAIL  src/math.test.ts"
-            echo "  ✕ should add two numbers correctly (5 ms)"
-            echo "  ● math functions › should add two numbers correctly"
-            echo ""
-            echo "    expect(received).toBe(expected) // Object.is equality"
-            echo ""
-            echo "    Expected: 4"
-            echo "    Received: 5"
-            echo ""
-            echo "      12 | test('should add two numbers correctly', () => {"
-            echo "    > 13 |   expect(add(2, 2)).toBe(4);"
-            echo "         |                     ^"
-            exit 1
-          fi
-          echo "Усі тести пройдено успішно!"
-
-      - name: Apply Database Migrations
-        run: |
-          echo "Накочування міграцій БД..."
-          if [ "${{ github.event.inputs.error_type }}" = "database_timeout" ]; then
-            echo "Error: Connection timeout. Could not connect to PostgreSQL on database.internal:5432"
-            echo "Hint: verify that your database is running and accept connections."
-            echo "PrismaClientInitializationError: Can't reach database server at database.internal"
-            exit 1
-          fi
-          echo "Міграції БД успішно застосовані!"
-
-      - name: Build & Deploy
-        run: |
-          echo "Збірка пройшла успішно!"
-          echo "Деплой на сервери завершено."
+          echo "Deploying ${{ github.repository }} to staging environment..."
+          # Тут можна додати кроки для деплою (наприклад, через ssh, kubectl або cloudflare wrangler)
+          echo "Deployment successful."
