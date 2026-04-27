@@ -1,4 +1,4 @@
-name: CI/CD Production Pipeline
+віівіввname: CI/CD Production Pipeline
 
 on:
   push:
@@ -11,6 +11,10 @@ on:
         description: 'Log level'
         required: false
         default: 'info'
+      siteName:
+        description: 'CF site name'
+        type: string
+        required: false
 
 env:
   REGISTRY: ghcr.io
