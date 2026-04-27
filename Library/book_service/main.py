@@ -5,6 +5,7 @@ from .database import SessionLocal, engine, Base
 import os
 from typing import List
 from PyPDF2 import PdfReader
+import redis  
 
 app = FastAPI()
 
