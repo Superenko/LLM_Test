@@ -5,12 +5,14 @@ from .database import SessionLocal, engine, Base
 import os
 from typing import List
 from PyPDF2 import PdfReader
-import redis  
+import redis
+
 
 app = FastAPI()
 
 # Create tables
 Base.metadata.create_all(bind=engine)
+
 
 def seed_books(db):
     if not db.query(models.Book).first():
@@ -35,8 +37,10 @@ def seed_books(db):
         db.add_all(books)
         db.commit()
 
+
 with SessionLocal() as db:
     seed_books(db)
+
 
 def get_db():
     db = SessionLocal()
@@ -45,13 +49,16 @@ def get_db():
     finally:
         db.close()
 
+
 @app.post("/books", response_model=schemas.Book)
 def create_book(book: schemas.BookCreate, db: Session = Depends(get_db)):
     return crud.create_book(db, book)
 
+
 @app.get("/books", response_model=list[schemas.Book])
 def read_books(db: Session = Depends(get_db)):
     return crud.get_books(db)
+
 
 @app.get("/books/{book_id}", response_model=schemas.Book)
 def read_book(book_id: int, db: Session = Depends(get_db)):
@@ -60,12 +67,14 @@ def read_book(book_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Book not found")
     return db_book
 
+
 @app.put("/books/{book_id}", response_model=schemas.Book)
 def update_book(book_id: int, book: schemas.BookCreate, db: Session = Depends(get_db)):
     updated = crud.update_book(db, book_id, book)
     if updated is None:
         raise HTTPException(status_code=404, detail="Book not found")
     return updated
+
 
 @app.delete("/books/{book_id}")
 def delete_book(book_id: int, db: Session = Depends(get_db)):
@@ -74,10 +83,12 @@ def delete_book(book_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Book not found")
     return {"message": "Book deleted"}
 
+
 @app.get("/debug/books")
 def debug_books(db: Session = Depends(get_db)):
     books = db.query(models.Book).all()
     return [{"id": b.id, "title": b.title, "author": b.author, "year": b.year, "pages": b.pages} for b in books]
+
 
 @app.post("/books/upload", response_model=schemas.Book)
 def upload_book(
@@ -134,6 +145,7 @@ def upload_book(
     db.commit()
     db.refresh(db_book)
     return db_book
+
 
 @app.get("/books/{book_id}/content")
 def get_book_content(book_id: int, db: Session = Depends(get_db)):

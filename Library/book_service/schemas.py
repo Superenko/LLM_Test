@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+
 class BookBase(BaseModel):
     title: str
     author: str
@@ -7,9 +8,11 @@ class BookBase(BaseModel):
     year: int
     pages: int
     cover_url: str | None = None  # Новое поле
-    
+
+
 class BookCreate(BookBase):
     pass
+
 
 class Book(BookBase):
     id: int
