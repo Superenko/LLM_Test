@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      siteName:
+        description: 'Service name to deploy'
+        type: string
+        required: false
 
 jobs:
   # 1. Перевірка Python сервісів (Лінтинг та швидкий тест імпорту)
