@@ -26,7 +26,7 @@ jobs:
           python-version: '3.11'
       - name: Lint & Import Check
         run: |
-          pip install flake8
+          
           # Перевірка стилю (не зупиняє білд завдяки --exit-zero)
           flake8 Library/${{ matrix.service }} --exit-zero --max-line-length=127
           # Перевірка, чи файл main.py взагалі запускається
